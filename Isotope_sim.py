@@ -1,17 +1,21 @@
+#Calculate isotopic distribution of macromolecules (low approximation) using FFT based algorithm by Rockwood et al.(1995)
 
 import math
 import re
 import numpy as np
 import matplotlib.pyplot as plt
 
-formula = raw_input("Enter the chemical formula: ")
+formula = raw_input("Enter the chemical formula: ") #Input formula, eg: C6H12O6
+res = raw_input("Enter required resolution: ")      #Resolution
 
-max_ele = 5
-max_mass = 2^10
+elem_limit = 5
+mass_limit = 2048
 
 ele = re.findall('[A-Z]', formula)
 elem_num = re.findall('[0-9]+', formula)
 
+Z = []
+S = []
 M = np.zeros(5)
 
 if 'H' in ele:
@@ -27,63 +31,56 @@ if 'O' in ele:
     M[3] = elem_num[ele.index('O')]
 
 if 'S' in ele:
-    M[4] = elem_num[ele.index('S')]
+    M[4] = elem_num[ele.index('S')]  #M contains empirical formula of the macromolecule [H C O N S]
 
 tot_mass = M[0]*1 + M[1]*12 + M[2]*14 + M[3]*16 + M[4]*32
 
-A = np.zeros((max_ele, max_mass))
+A = np.zeros((elem_limit, mass_limit)) #Isotopic abundance matrix
 
-if M[0] > 0:
-    A[0][1] = 0.998443
-    A[0][2] = 0.0001557
+A[0][1] = 0.998443          #H1
+A[0][2] = 0.0001557         #H2
+A[1][12] = 0.98889          #C12
+A[1][13] = 0.01111          #C13
+A[2][14] = 0.99634          #N14
+A[2][15] = 0.00366          #N15
+A[3][16] = 0.997628         #O16
+A[3][17] = 0.000372         #O17
+A[3][18] = 0.002000         #O18
+A[4][32] = 0.95018          #S32
+A[4][33] = 0.00750          #S33
+A[4][34] = 0.04215          #S34
+A[4][36] = 0.00017          #S36
+ 
+ele_fft = np.fft.fft(A)     #Element wise FFT of the isotopic abundance matrix
 
-if M[1] > 0:
-    A[1][12] = 0.98889
-    A[1][13] = 0.01111
+multi_fft = np.ones((1, mass_limit))
 
-if M[2] > 0:
-    A[2][14] = 0.99634
-    A[2][15] = 0.00366
+for i in range(elem_limit):
+    dA = ele_fft[i,:]
+    prdt = np.power(dA, M[i])
+    multi_fft = np.multiply(multi_fft, prdt)     #Multiplying transforms
 
-if M[3] > 0:
-    A[3][16] = 0.997628
-    A[3][17] = 0.000372
-    A[3][18] = 0.002000
+inv_fft = np.fft.ifft(multi_fft)    #Inverse FFT of the multiplied transforms to get convolutions
+real_fft = np.real(inv_fft)         #Real part of inverse FFT
 
-if M[4] > 0:
-    A[4][32] = 0.95018
-    A[4][33] = 0.00750  
-    A[4][34] = 0.04215
-    A[4][35] = 0
-    A[4][36] = 0.00017
+iso_abundance = np.zeros((1, mass_limit))
 
-tA = np.fft.fft(A)
+for s in range(mass_limit-1):
+   iso_abundance[0][s] = real_fft[0][s+1]
 
-ptA = np.ones((1, max_mass))
+int_mass = np.arange(1, mass_limit+1)
 
-for i in range(max_ele):
-    dA = tA[i,:]
-    prd = np.power(dA, M[i])
-    ptA = np.multiply(ptA, prd)
+j = np.where(iso_abundance[0] == np.max(iso_abundance[0])) #Relative abundance %, highest abundance to 100
+iso_abundance[0][j] = 1
 
-sTA = np.fft.ifft(ptA)
-riptA = np.real(sTA)
+for d in range(len(int_mass)):
+    if 100*iso_abundance[0][d] >= float(res):
+        Z.append(int_mass[d])
+        S.append(100*iso_abundance[0][d])
+        print(int_mass[d], 100*iso_abundance[0][d])
 
-id = np.zeros((1, max_mass))
-
-for s in range(max_mass-1):
-   id[0][s] = riptA[0][s+1]
-
-l = np.arange(1, max_mass+1)
-
-j = np.where(id[0] == np.max(id[0]))
-id[0][j] = 1
-
-plt.bar(l, 100*id[0], width=0.1)
-plt.xlim([tot_mass-2, tot_mass+10])
-plt.ylim([0, 105])
+plt.bar(Z, S, width = 0.02)
 plt.xlabel('Integer Mass')
 plt.ylabel('Relative Abundance')
-plt.xticks(np.arange(tot_mass-2, tot_mass+10, 1))
-plt.yticks(np.arange(0, 105, 10))
 plt.show()
+
